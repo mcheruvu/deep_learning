@@ -1,0 +1,455 @@
+# Microsoft Azure for Ubuntu 16.04 LTS machine (CPU|GPU)
+
+This document is the short tutorial showing how to choose, launch and use a Linux **`Ubuntu 16.04 LTS`** GPU (or CPU if you follow the CPU options below) machine Azure machine for Deep Learning.
+
+## What’s the difference between a GPU and CPU?
+CPU — has a few cores but each is very powerful. Ideal for serial processing.
+
+GPU — has a thousands of cores but each core is weak. Ideal for parallelize something that has a lot of simple operations. For example, the dot product between two vectors. That’s why they are extensively used in Deep Learning to train neural networks.
+
+Azure provides GPU instances for a fairly good price. Renting a machine with one K80 will be about  800$ per year or $0.90 per hour. Therefore, renting a virtual machine makes sense if you don’t plan to use if more than half a year continuously.
+
+So you chose a NC6 virtual machine with one K80 GPU card (2.5 Terra FLOPs per second) and Ubuntu 16.04 but what’s next? If you think that now you can run any Deep Learning framework like Keras or Tensorflow then the biggest challenge is to get the GPU to work for you.
+
+To run tasks on GPU you need to install CUDNN on your machine. CUDNN is a low level API for your card made by NVidia.
+
+Installing Deep Learning environment on Ubuntu is a HUGE pain so I create a GPU Docker container. NVidia has it’s own subversion of Docker that has CUDNN drivers preinstalled. This is very cool and available on Github for free. 
+
+Firstly let's choose a preferable type of VM on Azure based on specs and price using from the [Microsoft page](https://azure.microsoft.com/en-gb/pricing/details/virtual-machines/linux/). I recommend to start with the cheapest solution — NC6 instance ($0.90 per minute). 
+
+Here is a step by step process how to create a  NC6 Ubuntu powered virtual machine (VM) on the Azure Cloud.
+
+
+1. [Setting up an account](#setting-up-an-account)  
+2. [Creating machine configuration](#creating-machine-configuration)
+3. [Connect to the machine](#connect-to-the-machine)
+4. [Log in to GitHub](#log-in-to-github)
+5. [Fork Github repo](#fork-github-repo)
+6. [Setting up the environment for Docker container](#setting-up-the-environment-for-docker-container)  
+  6.1 [CPU](#cpu)  
+  6.2 [GPU](#gpu)  
+  6.3 [Connecting to docker](#connecting-to-docker)
+
+
+
+## [Setting up an account](#setting-up-an-account)  
+
+1. Go to [Azure](https://azure.microsoft.com/en-us/free/) and create an account (or log in if you already have one). Microsoft requires to provide credit card info. 
+  
+    After registration you will be given with **free trial** subscription which gives you 200$ to use Azure machines. The restriction is that you can not have more than 4 CPU cores under this subscription simultaneously. While the smallest GPU machine has 6 cores. Thus it is possible to use **only CPU machine for free**. **For GPU machine you should pay approximately 1$/hour**
+
+  ![az16](./pics/16.png)
+  
+  ![az17](./pics/17.png)
+
+# [Creating machine configuration](#creating-machine-configuration)
+
+1. Login to the [Azure Portal](https://portal.azure.com)
+
+2. Go to *Virtual Machines* menu
+
+   Let me notice that the notation here is a bit confusing if you were using Amazon previously. *Virtual Machine* here means exactly the same as *Instance* in Amazon - it is separate machine that runs inside the cloud.
+
+  ![az1](./pics/1.png)
+  
+3. Choose *Add* to create a new machine
+  
+  ![az2](./pics/2.png)
+  
+4. Select *Ubuntu Server* image to initialize fresh instance with this system. 
+
+  ![az3](./pics/3.png)
+  
+  ![az4](./pics/4.png)
+  
+5. It's time to do basic configuration. 
+   
+   The process is super simple
+
+* Hit “Add” to start creation process.
+* Choose Ubuntu Server and Ubuntu 16.04 version (you can choose any other version but this tutorial optimised for 16.04).
+* Set “Disk type” as a HDD (very important) and fill other required parameters. It’s actually recommended to use a public key from your computer rather than a password.
+* Choose NC6 type
+* Configure additional network params (actually not needed for now) and hit create.
+
+After couple of minutes your new VM will be created!
+
+   We've already activated *free trial* subscription, one should be able to set it in the subscription field. **With** ***free trial*** **subscription you can use machine with no more than 4 CPUs for free. If you want to use machine with more CPUs than 4 (GPU machine has at least 6) than you should choose** ***Pay-as-you-Go*** **subscription and you will be charged for it**
+   
+   Important thing here is to set *HDD* disk type and *East US* or *West US* location because only under these conditions GPU machines are available. 
+   
+   Also here I decided to choose *Passwords* identification, but in general it's better and safer to use SSH-keys.
+   
+   Let's also pick the unique username that will be used during the tutorial and course:
+   
+   ```bash
+   johndoe
+   ```
+
+  ![az5](./pics/5.png)
+  
+6. Let's choose instance type.
+
+* CPU
+
+   For the first part of the class CPU machine works fine and it can be used with *free trial* subscription. Our suggestion is to use **D12 v2** instance. From time to time there are promo tariffs for this type of instance so if you're lucky you can get cheaper machine (anyway money will be withdrawn from *free trial* subscription account).
+    
+  ![az61](./pics/6.1.png)
+  
+* GPU
+    
+    For the rest of the tasks where we need really powerfull machine with GPU our suggestion is the smallest [GPU machine](https://azure.microsoft.com/en-us/blog/azure-n-series-preview-availability/): **NC6** which contains 6 CPU cores, 56 GB of RAM, one NVidia Tesla K80 graphic card with 11 GB memory on board.
+  
+  ![az6](./pics/6.png)
+  
+7. Next you will be shown with some settings (which we are not interested in) and overview of the machine. At the stage of overview one can cross-check all the settings of the machine.
+
+  ![az6](./pics/7.png)
+
+  ![az6](./pics/8.png)
+  
+8. After that one can find ready-to-use (after some time which deployment takes) machine at the dashboard of the Azure portal. 
+
+## [Open ports 8888](#Open ports 8888)
+
+By default only the 22 port is opened - so one can connect to the machine only with SSH. And we want to use Jupyter Notebook. So let's forward the port for the Jupyter notebook (port 8888) - it is needed because we're going to access it from outside the Azure machine (e.g., from our laptop). 
+
+To open ports 8888 and 6006 (Tensorboard access) do the following:
+
+* Go to `Resource Groups` on the LHS Rail menu and select machine name (e.g., dl4).
+
+* Click on `Networking` menu option  in `SETTINGS` on the second-to-left handside menu.
+* Click on `Add New Inbound` button on top right hand side.
+* Add rule to access port 8888 on the Azure cloud machine from your local laptop.
+* And then add another rule to access port 6006 using similar steps  (click on `Add New Inbound button`)
+
+![azurePorts8888](./pics/azurePorts8888.png)
+
+
+Here *inbound secturity rules*  regulates all the connections to the machine. Here we added a rule to be able to connect to the Jupyter port (8888) of the Azure machine from the outside.
+
+
+
+## [Connect to the machine](#connect-to-the-machine)
+
+1. To be able to connect to the machine you should know its IP address.
+
+Click on your machine located here:
+
+  ![az14](./pics/14.png)
+  
+  Copy the address of the Azure VM.
+  
+
+  ![az15](./pics/15.png)
+  
+2. Now you know the IP and can easily connect to the machine via SSH.
+
+   ```bash
+   $ ssh johndoe@<IP>  # e.g., ssh johndoe@40.70.42.238
+   ```
+    
+   You're in! Congratulations!
+   
+
+
+
+# [Docker](#Docker): Install Docker on VM
+
+Here are steps to install CUDA drivers from the NVIDIA CUDA Toolkit on N-series (e.g., NC6, single GPU machine) VMs.
+
+C and C++ developers can optionally install the full Toolkit to build GPU-accelerated applications. For more information, see the CUDA Installation Guide.
+
+To install CUDA drivers, make an SSH connection to each VM. To verify that the system has a CUDA-capable GPU, run the following command:
+
+`lspci | grep -i NVIDIA`
+
+You will see output similar to the following example (showing an NVIDIA Tesla K80 card):
+
+`facf:00:00.0 3D controller: NVIDIA Corporation GK210GL [Tesla K80] (rev a1)`
+
+
+
+To install NVIDIA GPU drivers on N-series VMs running Linux  **`Ubuntu 16.04 LTS`**  execute the following commands:
+
+```bash
+
+ sudo apt-get update
+ sudo apt-get install \
+    apt-transport-https \
+    ca-certificates \
+    curl \
+    software-properties-common
+ curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+ sudo add-apt-repository \
+   "deb [arch=amd64] https://download.docker.com/linux/ubuntu \
+   $(lsb_release -cs) \
+   stable"
+sudo apt-get update
+sudo apt-get install docker-ce
+sudo docker run hello-world
+```
+
+For more details on installing NVIDIA GPU drivers on N-series VMs running Linux/Windows/etc have a look at the following webpages
+
+* [Microsoft Azure GPU Driver install page](https://docs.microsoft.com/en-us/azure/virtual-machines/linux/n-series-driver-setup?toc=%2fazure%2fvirtual-machines%2flinux%2ftoc.json)
+* [Medium page to setup an NC* install on Azure](https://medium.com/poteha-labs/gpu-azure-deep-learning-with-minimum-pain-ea6fd18848ad)
+
+# [GPU](#gpu): Install CUDA drivers on N-series VMs
+
+Now we need to install CUDA drivers for Ubuntu 16.04 for the NVidia Tesla K80 GPU card. If you have a different GPU / OS please go to official NVIDIA website and locate the required driver.
+
+Note: This installation takes some time (4-5 minutes).
+
+```bash
+wget http://developer.download.nvidia.com/compute/cuda/repos/ubuntu1604/x86_64/cuda-repo-ubuntu1604_8.0.44-1_amd64.deb
+sudo dpkg -i cuda-repo-ubuntu1604_8.0.44-1_amd64.deb
+sudo apt-get update
+sudo apt-get install cuda
+
+```
+
+
+## Check  and install  The NVIDIA CUDA Compiler:  nvcc -V
+
+On the command line:
+
+`sudo apt install nvidia-cuda-toolkit`
+
+## Verify the GPU card(s) are visible via command line
+
+  On the command line run `nvidia-smi` command. This should confirm that the GPU card is available and ready for business.
+  
+```   johndoe@dl:~$ nvidia-smi 
+Mon Dec 10 06:46:36 2018       
++-----------------------------------------------------------------------------+
+| NVIDIA-SMI 410.79       Driver Version: 410.79       CUDA Version: 10.0     |
+|-------------------------------+----------------------+----------------------+
+| GPU  Name        Persistence-M| Bus-Id        Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp  Perf  Pwr:Usage/Cap|         Memory-Usage | GPU-Util  Compute M. |
+|===============================+======================+======================|
+|   0  Tesla K80           Off  | 0000FACF:00:00.0 Off |                    0 |
+| N/A   40C    P8    32W / 149W |     11MiB / 11441MiB |      0%      Default |
++-------------------------------+----------------------+----------------------+
+                                                                               
++-----------------------------------------------------------------------------+
+| Processes:                                                       GPU Memory |
+|  GPU       PID   Type   Process name                             Usage      |
+|=============================================================================|
+|  No running processes found                                                 |
++-----------------------------------------------------------------------------+
+```
+
+# Installing nvidia-docker
+
+Next we need to install [nvidia-docker](https://github.com/NVIDIA/nvidia-docker).
+
+```bash
+# Install nvidia-docker and nvidia-docker-plugin
+
+wget -P /tmp https://github.com/NVIDIA/nvidia-docker/releases/download/v1.0.1/nvidia-docker_1.0.1-1_amd64.deb
+sudo dpkg -i /tmp/nvidia-docker*.deb && rm /tmp/nvidia-docker*.deb
+
+# Test nvidia-smi
+nvidia-docker run --rm nvidia/cuda nvidia-smi
+```
+
+# Launch Docker on VM
+
+On Azure virtual machine: 
+`sudo nvidia-docker run --runtime=nvidia -d -p 8888:8888 -p 6006:6006 -v /home/johndoe:/root/shared  vovacher/dl3:gpu`
+
+On Azure machine try without the `--runtime=nvidia`
+
+`sudo nvidia-docker run -d -p 8888:8888 -p 6006:6006 -v /home/johndoe:/root/shared  vovacher/dl3:gpu`
+
+Remove dangling containers if necessary:
+
+docker rmi $(docker images -q --filter "dangling=true")
+
+
+# [Connecting to docker on VM from your local machine](#connecting-to-docker)
+  
+1. On your local machine (i.e., not on the Azure machine) go to your browser and input the following address to bring up your Jupyter notebook (which is on the cloud machine)!
+
+   ```bash
+   <IP>:8888
+   e.g., 40.70.42.238:8888
+   ```
+   
+2. To test your environment create a new notebook and execute the following code:
+
+```bash 
+from keras import backend as K
+K.tensorflow_backend._get_available_gpus()
+
+# should return
+#['/job:localhost/replica:0/task:0/device:GPU:0']
+
+#if it returns [] then GPU there may be a GPU driver problem
+```
+   
+3. To shut down the container (on the cloud Azure machine) you just need to do
+
+   ```bash
+   sudo docker ps -a                 # to find the <container-ID> of your GPU container
+   sudo docker rm -f <container-ID>  #to shutdown your container
+   ```
+
+# Legacy stuff that needs upgrading 
+   Please skip the remainder of TUTORIAL as it needs to be upgraded
+
+
+# Legacy stuff that needs upgrading 
+   Please skip the remainder of this section as it needs to be upgraded
+
+
+    
+## [Log in to GitHub](#log-in-to-github)
+
+1. One should have a GitHub account. If you don't have one then go to the [Github](https://github.com/) and create it.
+
+   To grant access to the the course repository, please post your github nickname in the following [Google Table](https://docs.google.com/spreadsheets/d/1wLBY4GygYWxeMp7pkFu3aXIrnSHxK7PKKSpvSjkSRQM/edit#gid=0)
+
+2. Inside the Azure machine generate a new ssh keypair.
+
+   ```bash
+   $ ssh-keygen -t rsa
+   ```
+    
+   Press *Enter* on everything that will be asked (or do another if you know what you're doing).
+    
+3. Get brand new SSH public key and add it to the Github account. It is needed to associate your account with this new key.
+
+   ```bash
+   $ cat ~/.ssh/id_rsa.pub
+   ```
+    
+   Copy the output of this command.
+   
+   Go to the [github settings](https://github.com/settings/keys).
+   
+   Add just created SSH key via button *New SSH key*.
+   
+   
+## [Fork Github repo](#fork-github-repo)
+    
+1. Now you should be able to work with the course repository from Azure. 
+
+2. But you don't have *write* permissions for this repo. To be able to work and save your progress I strongly suggest to create a *fork* which is the copy of the repo at your own github account where you can work and save progress.
+
+  ![az19](./pics/19.png)
+  
+3. Now clone forked repo to the home folder of Azure machine
+
+   ```bash
+   $ git clone git@github.com:<YOUR_GIT_NICK>/dl3students1 ~/dl3students1
+   ```
+   
+   Now you have all the materials for the class in the cloud.
+   
+## [Setting up the environment for Docker container](#setting-up-the-environment-for-docker-container)
+
+The above pulled repo has the shell script `dlcourse.sh` which will install the Docker engine and all its dependencies for you.
+
+If you're using GPU machine then skip **CPU** section and proceed to the next **GPU** one.
+
+In case you're working with CPU instance then go to the **CPU** section and after that skip **GPU** section.
+
+For full tutorial on Docker containers see [here](DockerOverallTutorial.md)
+
+### [CPU](#cpu)
+
+1. Inside just cloned repo you can find special script *dlcourse.sh* which do all the work for you. 
+   
+   For CPU instance execute the following command on the Azure cloud machine:
+   
+   ```bash
+   $ sudo chmod +x ~/dl3students1/dlcourse.sh
+   $ sudo ~/dl3students1/dlcourse.sh -d cpu
+   ```
+   
+   It will install Docker and all the requirements for it.
+   
+2. Now all the requirements are installed. Next step is to pull the Docker image.
+
+   For CPU vesrion (works much slower but machine is cheaper).
+   
+   ```bash
+   $ sudo docker pull vovacher/dl3:cpu
+   ```
+   
+3. We provide very convenient scripts for launching and flushing the *dl3* container. On Azure machine execute
+
+   ```bash
+   $ sudo ~/dl3students1/start.sh -s /home/johndoe/dl3students1 -d cpu
+   ```
+   
+   *start.sh* basically supports two arguments:
+   1. **-s** for shared folder on the working station; we want to work with the whole *dl3students1* repo inside Docker that's why we pass it as a shared folder
+   2. **-d** for the device used; as far as we're using cpu it should be *cpu*
+
+
+### Legacy stuff that needs upgrading 
+Please skip the remainder of this section as it needs to be upgraded
+
+Then run installation commands specific for your distribution.
+
+
+1. Inside just cloned repo you can find special script *dlcourse.sh* which do all the work for you. 
+   
+   If you're using GPU than you should provide the corresponding key and execute on the cloud machine:
+
+
+
+The following probabably wont work:
+
+   ```bash
+   $ sudo chmod +x ~/dl3students1/dlcourse.sh
+   $ sudo ~/dl3students1/dlcourse.sh -d gpu
+   ```
+   
+   It will install NVidia driver for Tesla K80 graphic card, Docker and NVidia-Docker. During the execution of the script you will be asked some questions about NVidia drivers. Answer positively for all of them (Accept or OK).
+   
+2. Now all the requirements are installed. Next step is to pull the Docker image.
+
+   For GPU version execute on the Azure machine:
+
+   ```bash
+   $ sudo docker pull vovacher/dl3:gpu
+   ```
+   
+3. We provide very convenient scripts for launching and flushing the *dl3* container. On Azure machine execute
+
+   ```bash
+   $ sudo ~/dl3students1/start.sh -s /home/johndoe/dl3students1 -d gpu
+   ```
+   
+   *start.sh* basically supports two arguments:
+   1. **-s** for shared folder on the working station; we want to work with the whole *dl3students1* repo inside Docker that's why we pass it as a shared folder
+   2. **-d** for the device used; as far as we're using gpu it should be *gpu*
+   
+
+  
+### [Connecting to docker](#connecting-to-docker)
+  
+1. On your local machine (i.e., not on the Azure machine) go to your browser and input the following address to bring up your Jupyter notebook (which is on the cloud machine)!
+
+   ```bash
+   <IP>:8888
+   e.g., 40.70.42.238:8888
+   ```
+   
+2. To test your environment create a new notebook and execute the following code:
+
+   ```python
+   import tensorflow; 
+   print(tensorflow.__version__)
+   ```
+   It should print the number of TF version inside Docker container which is `1.1.0`
+   
+3. To shut down the container (on the cloud Azure machine) you just need to do
+
+   ```bash
+   $ sudo ~/dl3students1/stop.sh
+   ```
